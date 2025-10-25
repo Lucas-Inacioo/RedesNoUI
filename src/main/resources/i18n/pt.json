@@ -1,0 +1,17 @@
+{
+  "helpText": "Comandos:\n  send <destId> <mensagem>  — envia a mensagem ao UCSAP informado\n  whoami                    — mostra meu UCSAP id\n  peers                     — dica sobre o config\n  help                      — mostra esta ajuda\n  quit                      — encerra a aplicação\n",
+  "usage": "Uso: java -jar unicast-demo.jar --self <id> [--config </caminho/no/classpath>] [--lang <en|pt>]",
+  "usageExample": "Ex.: java -jar unicast-demo.jar --self 1 --config /up.conf --lang pt",
+  "selfIdInvalid": "--self precisa ser um short válido",
+  "failedToStartPrefix": "Falha ao iniciar UnicastProtocol: ",
+  "shuttingDown": "\\nEncerrando...",
+  "startedPrefix": "Unicast Demo iniciado. selfId=",
+  "whoAmIPrefix": "Meu UCSAP id: ",
+  "peersHint": "(Dica) Veja o arquivo de config no classpath. Use múltiplas instâncias com o MESMO config e ids distintos.",
+  "sendUsage": "Uso: send <destId> <mensagem>",
+  "sendConfirmPrefix": "[SEND] para ",
+  "destInvalidPrefix": "destId inválido: ",
+  "sendFailedPrefix": "Falha no envio: ",
+  "unknownCommand": "Comando desconhecido, uso:",
+  "goodbye": "Tchau."
+}

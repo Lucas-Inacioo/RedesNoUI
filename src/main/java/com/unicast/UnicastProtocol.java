@@ -20,11 +20,22 @@ import com.rip.UnicastServiceUserInterface;
  */
 public class UnicastProtocol implements UnicastServiceInterface {
 
+    /** Mapping of UCSAP IDs to their socket addresses */
     private final Map<Short, InetSocketAddress> table = new HashMap<>();
+
+    /** The UDP socket used for communication */
     private DatagramSocket socket;
+
+    /** The UCSAP id of this UnicastProtocol */
     private final short selfId;
+
+    /** The upper layer service user interface */
     private final UnicastServiceUserInterface upper;
+
+    /** Flag indicating if the protocol is running */
     private volatile boolean running = true;
+
+    /** Thread for receiving incoming packets */
     private Thread receivingThread;
 
     /**
@@ -53,6 +64,9 @@ public class UnicastProtocol implements UnicastServiceInterface {
 
             // Initialize UDP socket with assigned port
             this.socket = new DatagramSocket(self.getPort());
+
+            // Start receiver thread
+            startReceiver();
         } catch (IOException exception) {
             throw new RuntimeException("Failed to initialize UnicastProtocol with resource: " + configResourcePath, exception);
         }
@@ -201,7 +215,7 @@ public class UnicastProtocol implements UnicastServiceInterface {
      * @param senderAddress InetAddress of sender
      * @param port Port number of sender
      * 
-     * @return Resolved UCSAP id, or -1 if not found
+     * @return Resolved UCSAP id
      */
     private short resolveSource(InetAddress senderAddress, int port) {
         // Find UCSAP id by matching address and port
@@ -210,8 +224,7 @@ public class UnicastProtocol implements UnicastServiceInterface {
             if (currentAddress.getPort() == port && currentAddress.getAddress().equals(senderAddress)) return entry.getKey();
         }
 
-        // Not found
-        return -1;
+        throw new IllegalArgumentException("Unknown source: " + senderAddress + ":" + port);
     }
 
     /**
