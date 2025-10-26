@@ -18,37 +18,75 @@ public final class I18n {
 
     // ---- Public API ---------------------------------------------------------
 
+    /** Supported languages. */
     public enum Language {
+        /** English */
         EN("en"),
+
+        /** Portuguese */
         PT("pt");
 
         private final String code;
+
+        /** Language code. */
         Language(String code) { this.code = code; }
+
+        /** Returns the language code.
+         *
+         * @return the code
+        */
         public String code() { return code; }
 
+        /** Returns the Language for the given code, or EN if unknown.
+         * 
+         * @param code the language code
+         * 
+         * @return the Language
+        */
         public static Language fromCodeOrDefault(String code) {
             if ("pt".equalsIgnoreCase(code)) return PT;
             return EN;
         }
     }
 
-    /** Get (or load) a cached I18n instance for the given language code. */
+    /** Get (or load) a cached I18n instance for the given language code.
+     * 
+     * @param languageCode the language code, e.g. "en" or "pt"
+     *
+     * @return the I18n instance for the given language
+    */
     public static I18n forLanguageCode(String languageCode) {
         return forLanguage(Language.fromCodeOrDefault(languageCode));
     }
 
-    /** Get (or load) a cached I18n instance for the given language. */
+    /** Get (or load) a cached I18n instance for the given language.
+     * 
+     * @param language the language
+     *
+     * @return the I18n instance for the given language
+    */
     public static I18n forLanguage(Language language) {
         return CACHED_BY_LANGUAGE.computeIfAbsent(language, I18n::loadForLanguage);
     }
 
-    /** Returns the raw message for the given key, or !key! if missing. */
+    /** Returns the raw message for the given key, or !key! if missing.
+     * 
+     * @param key the message key
+     * 
+     * @return the message
+    */
     public String get(String key) {
         Objects.requireNonNull(key, "key must not be null");
         return messagesByKey.getOrDefault(key, "!" + key + "!");
     }
 
-    /** Returns the message with {0}, {1}, ... placeholders replaced by args. */
+    /** Returns the message with {0}, {1}, ... placeholders replaced by args.
+     * 
+     * @param key the message key
+     * @param arguments the arguments to replace placeholders
+     * 
+     * @return the formatted message
+    */
     public String format(String key, Object... arguments) {
         String template = get(key);
         return applyPlaceholders(template, arguments);

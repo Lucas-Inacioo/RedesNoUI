@@ -4,6 +4,14 @@ package com.helpers;
  * Helper methods for validation.
  */
 public class Helpers {
+
+  /**
+   * Default constructor for the Helpers class.
+   */
+  public Helpers() {
+    // No initialization required
+  }
+
   /**
    * Checks if the given ID is valid.
    * A valid ID is a non-negative integer.

@@ -14,6 +14,16 @@ import com.unicast.UnicastProtocol;
  * Unicast demo application with simple command-line interface.
  */
 public class UnicastDemoApp {
+
+    /**
+     * Default constructor for UnicastDemoApp.
+     * Initializes the application without any specific setup.
+     */
+    public UnicastDemoApp() {
+        // Default constructor
+    }
+
+
     /**
      * Prints the help text for available commands.
      */
@@ -26,9 +36,9 @@ public class UnicastDemoApp {
      * 
      * @param args Command-line arguments
      * 
-     * --self <id>       : Self UCSAP id (mandatory)
-     * --config <path>   : Path to the unicast protocol config file (default: /up.conf)
-     * --lang <code>     : Language code, "en" or "pt" (default: "en")
+     * --self &lt;id&gt;       : Self UCSAP id (mandatory)
+     * --config &lt;path&gt;   : Path to the unicast protocol config file (default: /up.conf)
+     * --lang &lt;code&gt;     : Language code, "en" or "pt" (default: "en")
      *
      * @throws Exception on fatal errors
      */

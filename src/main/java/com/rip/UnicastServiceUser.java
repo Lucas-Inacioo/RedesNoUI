@@ -2,6 +2,7 @@ package com.rip;
 
 import com.unicast.UnicastServiceInterface;
 
+/** Implementation of a UnicastServiceUser. */
 public class UnicastServiceUser implements UnicastServiceUserInterface {
     /** The UCSAP id of this UnicastServiceUser */
     private final short selfId;
