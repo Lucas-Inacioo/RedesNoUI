@@ -1,10 +1,14 @@
 ## Minimal Run:
-java -jar target/unicast-demo.jar --self <id>
+`java -jar <path> --self <id>`
 
 ## Flags
 --self <id> Node’s UCSAP id (short integer). REQUIRED.
---config <path> Path to Unicast protocol config file. Default: /up.conf (may be a .txt)
+--config <path> Path to Unicast protocol config file. Default: classpath:/up.conf (may be a .txt)
 --lang <code> Language for messages: en or pt. Default: en
+
+## Useful information
+To allow tests using non pre-made data, use the config flag followed by the relative path of the configuration file:
+`java -jar target/unicast-demo.jar --self 0 --config ./test.txt`
 
 ## Useful Commands
 - Compile: mvn clean compile

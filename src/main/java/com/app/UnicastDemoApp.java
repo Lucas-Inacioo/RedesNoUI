@@ -48,7 +48,7 @@ public class UnicastDemoApp {
 
         // Get values or defaults
         String selfIdString = argumentsMap.getOrDefault("--self", null);
-        String configPath = argumentsMap.getOrDefault("--config", "/up.conf");
+        String configPath = argumentsMap.getOrDefault("--config", "classpath:/up.conf");
         String languageCode = argumentsMap.getOrDefault("--lang", "en");
 
         // Language code must be "en" or "pt"

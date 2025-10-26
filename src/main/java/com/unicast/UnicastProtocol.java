@@ -9,6 +9,9 @@ import java.net.DatagramSocket;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -53,8 +56,8 @@ public class UnicastProtocol implements UnicastServiceInterface {
             this.selfId = selfId;
             this.upper = upper;
 
-            // Load configuration from classpath resource provided by caller
-            loadConfigFromClasspath(configResourcePath);
+            // Load configuration
+            loadConfig(configResourcePath);
 
             // Verify selfId exists in loaded config
             InetSocketAddress self = table.get(selfId);
@@ -68,6 +71,7 @@ public class UnicastProtocol implements UnicastServiceInterface {
             // Start receiver thread
             startReceiver();
         } catch (IOException exception) {
+            System.err.println("Exception occurred: " + exception.getMessage());
             throw new RuntimeException("Failed to initialize UnicastProtocol with resource: " + configResourcePath, exception);
         }
     }
@@ -228,56 +232,85 @@ public class UnicastProtocol implements UnicastServiceInterface {
     }
 
     /**
-     * Load configuration from classpath resource
+     * Load configuration from file
      * 
-     * @param resourcePath Path to configuration file in classpath
+     * @param configPath Path to configuration file
      *
      * @throws IOException if loading fails
      */
-    private void loadConfigFromClasspath(String resourcePath) throws IOException {
-        // Load configuration from classpath resource
-        try (InputStream inputStream = UnicastProtocol.class.getResourceAsStream(resourcePath)) {
-            if (inputStream == null) {
-                throw new IOException("Config not found in classpath: " + resourcePath);
+    private void loadConfig(String configPath) throws IOException {
+        // Open config input stream
+        InputStream input = openConfigInputStream(configPath);
+
+        // Check if found
+        if (input == null) {
+            throw new IOException("Config not found: " + configPath);
+        }
+
+        // Read and parse config lines
+        BufferedReader bufferedReader = new BufferedReader(new InputStreamReader(input, StandardCharsets.UTF_8));
+        readConfigLines(bufferedReader);
+    }
+    
+    /** Open InputStream for config from various sources
+     * 
+     * @param configPath Path to config
+     * 
+     * @return InputStream if found, null otherwise
+     * 
+     * @throws IOException if an I/O error occurs
+    */
+    private InputStream openConfigInputStream(String configPath) throws IOException {
+        // Check if classpath resource
+        if (configPath.startsWith("classpath:")) {
+            String classPath = configPath.substring("classpath:".length());
+            InputStream input = UnicastProtocol.class.getResourceAsStream(classPath);
+            if (input == null) throw new IOException("Classpath resource not found: " + classPath);
+            return input;
+        }
+
+        // Search locally as file path
+        Path path = Paths.get(configPath);
+        if (Files.exists(path) && Files.isRegularFile(path)) {
+            return Files.newInputStream(path);
+        }
+
+        return null;
+    }
+    /**
+     * Read and parse configuration lines from BufferedReader
+     * 
+     * @param bufferedReader BufferedReader to read from
+     * 
+     * @throws IOException if reading or parsing fails
+     */
+    private void readConfigLines(BufferedReader bufferedReader) throws IOException {
+        String line;
+        int actualLine = 0;
+        while ((line = bufferedReader.readLine()) != null) {
+            actualLine++;
+            line = line.trim();
+            if (line.isEmpty() || line.startsWith("#")) continue;
+
+            String[] parts = line.split("\\s+");
+            if (parts.length != 3) throw new IOException("Invalid config line (" + actualLine + "): " + line);
+
+            short UCSAPId;
+            String hostName;
+            int port;
+            try {
+                UCSAPId = Short.parseShort(parts[0]);
+                hostName = parts[1];
+                port = Integer.parseInt(parts[2]);
+            } catch (NumberFormatException e) {
+                throw new IOException("Invalid number format in config line (" + actualLine + "): " + line, e);
             }
-            try (BufferedReader br = new BufferedReader(new InputStreamReader(inputStream, StandardCharsets.UTF_8))) {
-                String line;
-                int actualLine = 0;
-                while ((line = br.readLine()) != null) {
-                    // Process each line
-                    actualLine++;
-                    line = line.trim();
-                    if (line.isEmpty() || line.startsWith("#")) {
-                        continue;
-                    }
 
-                    // Parse line: "<UCSAP_id> <host_name> <port_number>"
-                    String[] parts = line.split("\\s+");
-                    if (parts.length != 3) {
-                        throw new IOException("Invalid config line (" + actualLine + "): " + line);
-                    }
+            if (!Helpers.isValidId(UCSAPId)) throw new IllegalArgumentException("Invalid Node ID: " + UCSAPId);
+            if (!Helpers.isValidIP(hostName)) throw new IllegalArgumentException("Invalid host: " + hostName);
+            if (!Helpers.isValidPort(port)) throw new IllegalArgumentException("Invalid port: " + port);
 
-                    // Extract values
-                    short UCSAPId;
-                    String hostName;
-                    int port;
-                    try {
-                        UCSAPId = Short.parseShort(parts[0]);
-                        hostName = parts[1];
-                        port = Integer.parseInt(parts[2]);
-                    } catch (NumberFormatException exception) {
-                        throw new IOException("Invalid number format in config line (" + actualLine + "): " + line, exception);
-                    }
-
-                    // Parse and validate data
-                    if (!Helpers.isValidId(UCSAPId)) throw new IllegalArgumentException("Invalid Node ID: " + UCSAPId);
-                    if (!Helpers.isValidIP(hostName)) throw new IllegalArgumentException("Invalid host: " + hostName);
-                    if (!Helpers.isValidPort(port)) throw new IllegalArgumentException("Invalid port: " + port);
-
-                    // Store in table
-                    table.put(UCSAPId, new InetSocketAddress(hostName, port));
-                }
-            }
+            table.put(UCSAPId, new InetSocketAddress(hostName, port));
         }
     }
 }
