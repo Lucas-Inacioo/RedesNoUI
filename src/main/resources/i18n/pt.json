@@ -7,7 +7,7 @@
   "shuttingDown": "\\nEncerrando...",
   "startedPrefix": "Unicast Demo iniciado. selfId=",
   "whoAmIPrefix": "Meu UCSAP id: ",
-  "peersHint": "(Dica) Veja o arquivo de config no classpath. Use múltiplas instâncias com o MESMO config e ids distintos.",
+  "peersHint": "Para permitir testes usando dados não predefinidos, use a flag de config (--config) seguida do caminho relativo do arquivo de configuração, se não, será usado o padrão (classpath:.conf).",
   "sendUsage": "Uso: send <destId> <mensagem>",
   "sendConfirmPrefix": "[SEND] para ",
   "destInvalidPrefix": "destId inválido: ",
