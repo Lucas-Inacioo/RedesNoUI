@@ -58,7 +58,7 @@ public class UnicastProtocolTest {
   @DisplayName("Constructor loads config and fills table")
   void constructorLoadsConfig() throws Exception {
     // Create UnicastProtocol with test config
-    unicastProtocol = new UnicastProtocol("/com/unicast/testConfig.txt", (short) 0, upperLayerMock);
+    unicastProtocol = new UnicastProtocol("classpath:/up.conf", (short) 0, upperLayerMock);
 
     Map<Short, InetSocketAddress> table = readTable(unicastProtocol);
     assertTrue(table.containsKey((short) 1), "config should load UCSAP 1");
@@ -78,7 +78,7 @@ public class UnicastProtocolTest {
     receiver = new DatagramSocket(1150);
     receiver.setSoTimeout(1500);
 
-    unicastProtocol = new UnicastProtocol("/com/unicast/testConfig.txt", (short) 0, upperLayerMock);
+    unicastProtocol = new UnicastProtocol("classpath:/up.conf", (short) 0, upperLayerMock);
 
     // Send
     String payload = "hello";
@@ -105,7 +105,7 @@ public class UnicastProtocolTest {
   @Test
   @DisplayName("UPDataReq throws when destination UCSAP id is missing")
   void upDataReqThrowsForUnknownDest() {
-    unicastProtocol = new UnicastProtocol("/com/unicast/testConfig.txt", (short) 0, upperLayerMock);
+    unicastProtocol = new UnicastProtocol("classpath:/up.conf", (short) 0, upperLayerMock);
     Exception exception = assertThrows(IllegalArgumentException.class, () -> unicastProtocol.UPDataReq((short) 99, "test"));
     assertNotNull(exception);
   }
@@ -116,7 +116,7 @@ public class UnicastProtocolTest {
   @Test
   @DisplayName("UPDataReq rejects PDU larger than 1024 bytes (buildPdu limit)")
   void upDataReqRejectsOversizedPdu() {
-    unicastProtocol = new UnicastProtocol("/com/unicast/testConfig.txt", (short) 0, upperLayerMock);
+    unicastProtocol = new UnicastProtocol("classpath:/up.conf", (short) 0, upperLayerMock);
 
     // Make a payload big enough that "UPDREQPDU <len> " + payload exceeds 1024
     // Header length is roughly 10 + digits(len) + 1, 1015 'a's is safely over.
@@ -131,7 +131,7 @@ public class UnicastProtocolTest {
   @Test
   @DisplayName("UPDataReq throws when payload is null")
   void upDataReqThrowsForNullPayload() {
-    unicastProtocol = new UnicastProtocol("/com/unicast/testConfig.txt", (short) 0, upperLayerMock);
+    unicastProtocol = new UnicastProtocol("classpath:/up.conf", (short) 0, upperLayerMock);
     Exception exception = assertThrows(NullPointerException.class, () -> unicastProtocol.UPDataReq((short) 1, null));
     assertNotNull(exception);
   }
