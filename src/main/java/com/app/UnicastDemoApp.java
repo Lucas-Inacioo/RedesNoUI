@@ -6,8 +6,8 @@ import java.util.Arrays;
 import java.util.Map;
 import java.util.stream.Collectors;
 
+import com.RoutingInformationProtocol.RoutingInformationProtocol;
 import com.app.i18n.I18n;
-import com.rip.UnicastServiceUser;
 import com.unicast.UnicastProtocol;
 
 /**
@@ -70,11 +70,11 @@ public class UnicastDemoApp {
             System.exit(2); return;
         }
 
-        // Create UnicastServiceUser and UnicastProtocol, binding them together
-        final UnicastServiceUser rip;
+        // Create RoutingInformationProtocol and UnicastProtocol, binding them together
+        final RoutingInformationProtocol rip;
         final UnicastProtocol unicastProtocol;
         try {
-            rip = new UnicastServiceUser(selfId);
+            rip = new RoutingInformationProtocol(selfId);
             unicastProtocol  = new UnicastProtocol(configPath, selfId, rip);
             rip.bind(unicastProtocol);
         } catch (RuntimeException error) {

@@ -1,37 +1,37 @@
-package com.rip;
+package com.RoutingInformationProtocol;
 
 import com.unicast.UnicastServiceInterface;
 
-/** Implementation of a UnicastServiceUser. */
-public class UnicastServiceUser implements UnicastServiceUserInterface {
-    /** The UCSAP id of this UnicastServiceUser */
+/** Implementation of a RoutingInformationProtocol. */
+public class RoutingInformationProtocol implements UnicastServiceUserInterface {
+    /** The UCSAP id of this RoutingInformationProtocol */
     private final short selfId;
 
-    /** The UnicastProtocol used by this UnicastServiceUser */
+    /** The UnicastProtocol used by this RoutingInformationProtocol */
     private UnicastServiceInterface unicastProtocol;
 
     /**
-     * Constructs a UnicastServiceUser with the given selfId.
+     * Constructs a RoutingInformationProtocol with the given selfId.
      *
-     * @param selfId The UCSAP id of this UnicastServiceUser
+     * @param selfId The UCSAP id of this RoutingInformationProtocol
      */
-    public UnicastServiceUser(short selfId) {
+    public RoutingInformationProtocol(short selfId) {
         this.selfId = selfId;
     }
 
     /**
-     * Constructs a UnicastServiceUser with the given selfId and binds it to the specified UnicastProtocol.
+     * Constructs a RoutingInformationProtocol with the given selfId and binds it to the specified UnicastProtocol.
      * 
-     * @param selfId The UCSAP id of this UnicastServiceUser
+     * @param selfId The UCSAP id of this RoutingInformationProtocol
      * @param unicastProtocol The UnicastProtocol to bind to 
      */
-    public UnicastServiceUser(short selfId, UnicastServiceInterface unicastProtocol) {
+    public RoutingInformationProtocol(short selfId, UnicastServiceInterface unicastProtocol) {
         this.selfId = selfId;
         this.unicastProtocol = unicastProtocol;
     }
 
     /**
-     * Binds this UnicastServiceUser to the given UnicastProtocol.
+     * Binds this RoutingInformationProtocol to the given UnicastProtocol.
      *
      * @param unicastProtocol The UnicastProtocol to bind to
      */
@@ -45,11 +45,11 @@ public class UnicastServiceUser implements UnicastServiceUserInterface {
      * @param dest The destination UCSAP id
      * @param msg  The message to send
      *
-     * @throws IllegalStateException if the UnicastServiceUser is not yet bound to a UnicastProtocol
+     * @throws IllegalStateException if the RoutingInformationProtocol is not yet bound to a UnicastProtocol
      */
     public void send(short dest, String msg) throws IllegalStateException {
         if (unicastProtocol == null) {
-            throw new IllegalStateException("UnicastServiceUser not bound to protocol yet.");
+            throw new IllegalStateException("RoutingInformationProtocol not bound to protocol yet.");
         }
         unicastProtocol.UPDataReq(dest, msg);
     }

@@ -12,8 +12,8 @@ import java.nio.charset.StandardCharsets;
 import java.util.HashMap;
 import java.util.Map;
 
+import com.RoutingInformationProtocol.UnicastServiceUserInterface;
 import com.helpers.Helpers;
-import com.rip.UnicastServiceUserInterface;
 
 /**
  * Unicast Protocol (UP) implementation

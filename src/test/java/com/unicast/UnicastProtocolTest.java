@@ -17,7 +17,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
-import com.rip.UnicastServiceUserInterface;
+import com.RoutingInformationProtocol.UnicastServiceUserInterface;
 
 public class UnicastProtocolTest {
 
