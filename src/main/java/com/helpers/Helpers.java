@@ -14,14 +14,14 @@ public class Helpers {
 
   /**
    * Checks if the given ID is valid.
-   * A valid ID is a non-negative integer.
+   * A valid ID is within the range 0 to 15.
    * 
    * @param id the ID to check
    * 
    * @return true if the ID is valid, false otherwise
    */
   public static boolean isValidId(int id) {
-    return id >= 0;
+    return id >= 0 && id <= 15;
   }
 
   /**

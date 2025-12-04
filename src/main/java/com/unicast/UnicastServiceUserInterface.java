@@ -1,4 +1,4 @@
-package com.RoutingInformationProtocol;
+package com.unicast;
 
 /** Interface for a UnicastServiceUser. */
 public interface UnicastServiceUserInterface {

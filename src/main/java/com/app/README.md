@@ -3,7 +3,7 @@
 
 ## Flags
 --self <id> Node’s UCSAP id (short integer). REQUIRED.
---config <path> Path to Unicast protocol config file. Default: classpath:/up.conf (may be a .txt)
+--config <path> Path to Unicast protocol config file. Default: classpath:/nodes.conf (may be a .txt)
 --lang <code> Language for messages: en or pt. Default: en
 
 ## Useful information
