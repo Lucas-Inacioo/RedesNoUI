@@ -1,10 +1,22 @@
 package com.routingInformationProtocol;
 
+import java.io.BufferedReader;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.InputStreamReader;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.util.Timer;
+import java.util.TimerTask;
 
+import com.helpers.Helpers;
 import com.routingManagement.RoutingProtocolManagementServiceUserInterface;
 import com.unicast.UnicastServiceInterface;
 import com.unicast.UnicastServiceUserInterface;
 
+/* Possible states of the RoutingInformationProtocol */
 enum PossibleState {
     IDLE,
     LINK_COST_REQUEST,
@@ -15,48 +27,106 @@ enum PossibleState {
     DISTANCE_VECTOR_UPDATE
 }
 
-/** Implementation of a RoutingInformationProtocol. */
+/**
+ * Implementation of a RoutingInformationProtocol.
+ */
 public class RoutingInformationProtocol implements UnicastServiceUserInterface, RoutingProtocolManagementInterface {
-    /** The UCSAP id of this RoutingInformationProtocol */
+
+    /**
+     * The UCSAP id of this RoutingInformationProtocol
+     */
     private final short selfId;
 
-    /** The distance table of this RoutingInformationProtocol */
+    /**
+     * The distance table of this RoutingInformationProtocol
+     */
     private int[][] distanceTable;
 
-    /** The current state of the manager */
+    /**
+     * Physical link costs c(x, v).
+     */
+    private int[][] linkCostTable;
+
+    /**
+     * The current state of the manager
+     */
     private PossibleState currentState = PossibleState.IDLE;
 
-    /** The UnicastProtocol used by this RoutingInformationProtocol */
+    /**
+     * The UnicastProtocol used by this RoutingInformationProtocol
+     */
     private UnicastServiceInterface unicastProtocol;
 
-    /** The RoutingManagementApplication using this RoutingInformationProtocol */
+    /**
+     * The RoutingManagementApplication using this RoutingInformationProtocol
+     */
     private RoutingProtocolManagementServiceUserInterface routingProtocolManagementServiceUserInterface;
 
-    /** Represents an infinite cost in the distance table */
+    /**
+     * Represents an infinite cost in the distance table
+     */
     private static final int INF = -1;
 
+    /**
+     * Maximum number of nodes supported (0..15)
+     */
     private static final int MAX_NODES = 16; // 0..15
 
     /**
-     * Constructs a RoutingInformationProtocol with the given selfId.
-     *
-     * @param selfId The UCSAP id of this RoutingInformationProtocol
+     * Timeout (ms) for periodic distance vector propagation
      */
-    public RoutingInformationProtocol(short selfId) {
-        this.selfId = selfId;
-        initializeDistanceTable();
+    private final long propagationTimeoutMillis;
+
+    /**
+     * Timer for periodic propagation
+     */
+    private Timer propagationTimer;
+
+    /**
+     * Constructs a RoutingInformationProtocol with default timeout (10s).
+     */
+    public RoutingInformationProtocol(String networkConfig, short selfId) throws IOException {
+        this(networkConfig, selfId, 10_000L); // 10 seconds default
     }
 
     /**
-     * Constructs a RoutingInformationProtocol with the given selfId and binds it to the specified UnicastProtocol.
-     * 
-     * @param selfId The UCSAP id of this RoutingInformationProtocol
-     * @param unicastProtocol The UnicastProtocol to bind to 
+     * Constructs a RoutingInformationProtocol with a specific timeout.
+     *
+     * @param timeoutMillis Timeout in milliseconds for periodic distance vector
+     * propagation
      */
-    public RoutingInformationProtocol(short selfId, UnicastServiceInterface unicastProtocol) {
+    public RoutingInformationProtocol(String networkConfig, short selfId, long timeoutMillis) throws IOException {
         this.selfId = selfId;
-        this.unicastProtocol = unicastProtocol;
-        initializeDistanceTable();
+        this.propagationTimeoutMillis = timeoutMillis;
+        initializeDistanceTable(networkConfig);
+        startPropagationTimerIfNode();
+    }
+
+    /**
+     * Starts the periodic propagation timer for node entities (selfId != 0)
+     */
+    private void startPropagationTimerIfNode() {
+        if (selfId == 0) {
+            return;
+        }
+
+        propagationTimer = new Timer(true);
+        propagationTimer.scheduleAtFixedRate(new TimerTask() {
+            @Override
+            public void run() {
+                handlePeriodicPropagation();
+            }
+        }, propagationTimeoutMillis, propagationTimeoutMillis);
+    }
+
+    /**
+     * Called periodically by the timer
+     */
+    private void handlePeriodicPropagation() {
+        if (selfId == 0) {
+            return;
+        }
+        propagateDistanceVector();
     }
 
     /**
@@ -72,29 +142,15 @@ public class RoutingInformationProtocol implements UnicastServiceUserInterface, 
         this.routingProtocolManagementServiceUserInterface = app;
     }
 
-    private void initializeDistanceTable() {
-        distanceTable = new int[MAX_NODES][MAX_NODES];
-
-        // start everything as INF
-        for (int i = 0; i < MAX_NODES; i++) {
-            for (int j = 0; j < MAX_NODES; j++) {
-                distanceTable[i][j] = INF;
-            }
-        }
-
-        // cost to self is always 0
-        for (int i = 0; i < MAX_NODES; i++) {
-            distanceTable[i][i] = 0;
-        }
-    }
-
     /**
-     * Sends a message to the specified destination UCSAP id using the unicast protocol.
+     * Sends a message to the specified destination UCSAP id using the unicast
+     * protocol.
      *
      * @param dest The destination UCSAP id
-     * @param msg  The message to send
+     * @param msg The message to send
      *
-     * @throws IllegalStateException if the RoutingInformationProtocol is not yet bound to a UnicastProtocol
+     * @throws IllegalStateException if the RoutingInformationProtocol is not
+     * yet bound to a UnicastProtocol
      */
     public void send(short dest, String msg) throws IllegalStateException {
         if (unicastProtocol == null) {
@@ -107,34 +163,27 @@ public class RoutingInformationProtocol implements UnicastServiceUserInterface, 
      * Handles incoming data indications from the UnicastProtocol.
      *
      * @param originUCSAPId Origin UCSAP id
-     * @param data          The received data
+     * @param data The received data
      */
     @Override
     public void UPDataInd(short originUCSAPId, String data) {
+        System.out.println("RIP received data from " + originUCSAPId + ": " + data);
         // Check if node is manager
         boolean isManager = (selfId == 0);
-    
+
         // Check if sender is manager
         boolean senderIsManager = (originUCSAPId == 0);
 
-        // Process data request PDU <UPDREQPDU><\s><data.length><\s><operation><\s><parameters split by \s>
-        String pduData = processDataRequestPDU(data);
-
-        if (pduData == null) {
-            return;
-        }
-
         // Get PDU parts
-        String[] pduDataParts = pduData.split(" ");
+        String[] pduDataParts = data.split(" ");
         if (pduDataParts.length < 1) {
             return;
         }
-        
+
         // Deal with operation considering if is manager or not
         if (isManager) {
             processManagerOperation(pduDataParts);
-        }
-        else {
+        } else {
             processNodeOperation(pduDataParts, senderIsManager);
         }
     }
@@ -164,11 +213,12 @@ public class RoutingInformationProtocol implements UnicastServiceUserInterface, 
     }
 
     /**
-     * Asks the RoutingInformationProtocol to get the cost of the link to a neighbor.
+     * Asks the RoutingInformationProtocol to get the cost of the link to a
+     * neighbor.
      *
      * @param UCSAPId The UCSAP id of the RoutingInformationProtocol
      * @param neighbor The UCSAP id of the neighbor
-     * 
+     *
      * @return true if the both nodes are valid and connected, false otherwise
      */
     @Override
@@ -199,13 +249,15 @@ public class RoutingInformationProtocol implements UnicastServiceUserInterface, 
     }
 
     /**
-     * Asks the RoutingInformationProtocol to set the cost of the link to a neighbor.
+     * Asks the RoutingInformationProtocol to set the cost of the link to a
+     * neighbor.
      *
      * @param UCSAPId The UCSAP id of the RoutingInformationProtocol
      * @param neighbor The UCSAP id of the neighbor
      * @param cost The new cost of the link
-     * 
-     * @return true if both nodes are valid and connected and cost is non-negative, false otherwise 
+     *
+     * @return true if both nodes are valid and connected and cost is
+     * non-negative, false otherwise
      */
     @Override
     public boolean setLinkCost(short UCSAPId, short neighborUCSAPId, int cost) {
@@ -235,57 +287,130 @@ public class RoutingInformationProtocol implements UnicastServiceUserInterface, 
             currentState = PossibleState.LINK_COST_SET_REQUEST_2;
         }
 
-        return true;        
+        return true;
     }
 
-    private String processDataRequestPDU(String data) {
-        // Process the received data
-        String[] pduParts = data.split(" ");
-        
-        // Check if it is a UPDREQPDU
-        if (pduParts.length < 2 || !pduParts[0].equals("UPDREQPDU")) {
-            return null;
+    /**
+     * Initializes the distance table from a configuration file.
+     *
+     * @param networkConfig The path to the network configuration file
+     *
+     * @throws IOException if there is an error reading the configuration file
+     */
+    private void initializeDistanceTable(String networkConfig) throws IOException {
+        // Open config input stream
+        InputStream input = openConfigInputStream(networkConfig);
+
+        // Check if found
+        if (input == null) {
+            throw new IOException("Config not found: " + networkConfig);
         }
 
-        // Verify if PDU length is less than the maximum length (don't trust the sender)
-        if (data.length() > 1024) {
-            return null;
-        }
+        // Read and parse config lines
+        BufferedReader bufferedReader = new BufferedReader(new InputStreamReader(input, StandardCharsets.UTF_8));
+        readConfigLines(bufferedReader);
+    }
 
-        // Get data length
-        int dataLength;
-        try {
-            dataLength = Integer.parseInt(pduParts[1]);
-        } catch (NumberFormatException error) {
-            return null;
-        }
-
-        // Guarantee it is non-negative
-        if (dataLength < 0) {
-            return null;
-        }
-
-        // Starting from the first character after the second space, get dataLength characters
-        int firstDataCharIndex = pduParts[0].length() + 1 + pduParts[1].length() + 1;
-        if (firstDataCharIndex + dataLength > data.length()) {
-            return null;
-        }
-
-        // Check if doesn't exceed data length
-        try {
-            if (firstDataCharIndex + dataLength > data.length()) {
-                return null;
+    /**
+     * Opens an InputStream for the given configuration path.
+     *
+     * @param configPath The configuration path (can be classpath: or file path)
+     *
+     * @return An InputStream for the configuration, or null if not found
+     *
+     * @throws IOException if there is an error opening the stream
+     */
+    private InputStream openConfigInputStream(String configPath) throws IOException {
+        // Check if classpath resource
+        if (configPath.startsWith("classpath:")) {
+            String classPath = configPath.substring("classpath:".length());
+            InputStream input = RoutingInformationProtocol.class.getResourceAsStream(classPath);
+            if (input == null) {
+                throw new IOException("Classpath resource not found: " + classPath);
             }
-        } catch (IndexOutOfBoundsException error) {
-            return null;
+            return input;
         }
 
-        // Get PDU data
-        String pduData = data.substring(firstDataCharIndex, firstDataCharIndex + dataLength);
+        // Search locally as file path
+        Path path = Paths.get(configPath);
+        if (Files.exists(path) && Files.isRegularFile(path)) {
+            return Files.newInputStream(path);
+        }
 
-        return pduData;
+        return null;
     }
 
+    /**
+     * Reads and parses configuration lines from the given BufferedReader.
+     *
+     * @param bufferedReader The BufferedReader to read from
+     *
+     * @throws IOException if there is an error reading or parsing the lines
+     */
+    private void readConfigLines(BufferedReader bufferedReader) throws IOException {
+        String line;
+        int actualLine = 0;
+        while ((line = bufferedReader.readLine()) != null) {
+            actualLine++;
+            line = line.trim();
+            if (line.isEmpty() || line.startsWith("#")) {
+                continue;
+            }
+
+            String[] parts = line.split("\\s+");
+            if (parts.length != 3) {
+                throw new IOException("Invalid config line (" + actualLine + "): " + line);
+            }
+
+            short UCSAPId;
+            short neighborUCSAPId;
+            int cost;
+            try {
+                UCSAPId = Short.parseShort(parts[0]);
+                neighborUCSAPId = Short.parseShort(parts[1]);
+                cost = Integer.parseInt(parts[2]);
+            } catch (NumberFormatException e) {
+                throw new IOException("Invalid number format in config line (" + actualLine + "): " + line, e);
+            }
+
+            if (!Helpers.isValidId(UCSAPId)) {
+                throw new IllegalArgumentException("Invalid Node ID: " + UCSAPId);
+            }
+            if (!Helpers.isValidId(neighborUCSAPId)) {
+                throw new IllegalArgumentException("Invalid neighbor Node ID: " + neighborUCSAPId);
+            }
+            if (cost < 1 || cost > 15) {
+                throw new IllegalArgumentException("Invalid cost: " + cost);
+            }
+
+            // Add to distance table
+            if (linkCostTable == null) {
+                linkCostTable = new int[MAX_NODES][MAX_NODES];
+                distanceTable = new int[MAX_NODES][MAX_NODES];
+
+                for (int i = 0; i < MAX_NODES; i++) {
+                    for (int j = 0; j < MAX_NODES; j++) {
+                        linkCostTable[i][j] = INF;
+                        distanceTable[i][j] = INF;
+                    }
+                    // every node's cost to itself is 0
+                    distanceTable[i][i] = 0;
+                }
+            }
+            linkCostTable[UCSAPId][neighborUCSAPId] = cost;
+            linkCostTable[neighborUCSAPId][UCSAPId] = cost;
+
+            if (UCSAPId == selfId) {
+                distanceTable[selfId][neighborUCSAPId] = cost;
+            } else if (neighborUCSAPId == selfId) {
+                distanceTable[selfId][UCSAPId] = cost;
+            }
+        }
+    }
+
+    /** 
+     * Processes an operation received by the manager.
+     */
     private void processManagerOperation(String[] pduDataParts) {
         // Get operation
         String operation = pduDataParts[0];
@@ -313,6 +438,8 @@ public class RoutingInformationProtocol implements UnicastServiceUserInterface, 
 
                 boolean shouldNotify = false;
 
+                System.out.println("Current state: " + currentState);
+
                 switch (currentState) {
                     case LINK_COST_REQUEST -> {
                         shouldNotify = true;
@@ -334,14 +461,14 @@ public class RoutingInformationProtocol implements UnicastServiceUserInterface, 
 
                 if (shouldNotify && routingProtocolManagementServiceUserInterface != null) {
                     routingProtocolManagementServiceUserInterface
-                        .linkCostIndication(UCSAPId, neighborUCSAPId, cost);
+                            .linkCostIndication(UCSAPId, neighborUCSAPId, cost);
                 }
             }
             // <RIPRSP><\s><UCSAPId><\s><distanceTable entries...>
             // Entries <vetor_distancia_no_origem><\s><vetor_distancia_no1>...<vetor_distancia_non-1>
             case "RIPRSP" -> {
                 // Check if we got UCSAPId
-                if (pduDataParts.length < 2) {
+                if (pduDataParts.length < 3) { // need at least "RIPRSP <id> <vec_self>"
                     return;
                 }
 
@@ -353,25 +480,44 @@ public class RoutingInformationProtocol implements UnicastServiceUserInterface, 
                     return;
                 }
 
-                // Build distance table from remaining entries
-                int[][] receivedTable = new int[16][16];
-                int index = 2;
-                for (int i = 0; i < 16; i++) {
-                    for (int j = 0; j < 16; j++) {
-                        if (index >= pduDataParts.length) {
-                            return;
-                        }
-                        try {
-                            receivedTable[i][j] = Integer.parseInt(pduDataParts[index]);
-                        } catch (NumberFormatException error) {
-                            return;
-                        }
-                        index++;
+                // Initialize received table with INF and 0 on diagonal
+                int[][] receivedTable = new int[MAX_NODES][MAX_NODES];
+                for (int i = 0; i < MAX_NODES; i++) {
+                    for (int j = 0; j < MAX_NODES; j++) {
+                        receivedTable[i][j] = INF;
                     }
+                    receivedTable[i][i] = 0;
+                }
+
+                int partIndex = 2;
+
+                // 1) First vector is the origin node's DV
+                int[] originVector = decodeVector(pduDataParts[partIndex++]);
+                for (int dst = 0; dst < MAX_NODES; dst++) {
+                    receivedTable[UCSAPId][dst] = originVector[dst];
+                }
+
+                // 2) Remaining vectors correspond to the other nodes in increasing nodeId order,
+                // skipping UCSAPId. This must match the order used when building the PDU.
+                int nextNodeId = 0;
+                while (partIndex < pduDataParts.length && nextNodeId < MAX_NODES) {
+                    if (nextNodeId == UCSAPId) {
+                        nextNodeId++;
+                        continue;
+                    }
+
+                    int[] vec = decodeVector(pduDataParts[partIndex++]);
+                    for (int dst = 0; dst < MAX_NODES; dst++) {
+                        receivedTable[nextNodeId][dst] = vec[dst];
+                    }
+
+                    nextNodeId++;
                 }
 
                 // Notify the RoutingManagementApplication
-                routingProtocolManagementServiceUserInterface.distanceTableIndication(UCSAPId, receivedTable);
+                if (routingProtocolManagementServiceUserInterface != null) {
+                    routingProtocolManagementServiceUserInterface.distanceTableIndication(UCSAPId, receivedTable);
+                }
 
                 // Set state back to idle
                 currentState = PossibleState.IDLE;
@@ -382,10 +528,13 @@ public class RoutingInformationProtocol implements UnicastServiceUserInterface, 
         }
     }
 
+    /**
+     * Processes an operation received by a node.
+     */
     private void processNodeOperation(String[] pduDataParts, boolean senderIsManager) {
         // Get operation
         String operation = pduDataParts[0];
-        
+
         // Check if idle (all operations in node must start in idle state)
         if (currentState != PossibleState.IDLE) {
             return;
@@ -399,17 +548,28 @@ public class RoutingInformationProtocol implements UnicastServiceUserInterface, 
                     return;
                 }
 
-                // Build distance table response PDU
-                StringBuilder ripRspPDUBuilder = new StringBuilder("RIPRSP " + selfId);
-                for (int i = 0; i < 16; i++) {
-                    for (int j = 0; j < 16; j++) {
-                        ripRspPDUBuilder.append(" ").append(distanceTable[i][j]);
+                // Build distance table response PDU:
+                // RIPRSP <selfId> <DV_self> <DV_node0> <DV_node1> ... (excluding selfId)
+                StringBuilder ripRspPDUBuilder = new StringBuilder("RIPRSP ").append(selfId);
+
+                // 1) First vector: this node's own distance vector
+                ripRspPDUBuilder.append(" ")
+                        .append(encodeVector(distanceTable[selfId]));
+
+                // 2) Remaining vectors: one per other node (0..15, except selfId),
+                // in deterministic order so manager can rebuild the table.
+                for (int nodeId = 0; nodeId < MAX_NODES; nodeId++) {
+                    if (nodeId == selfId) {
+                        continue;
                     }
+                    ripRspPDUBuilder.append(" ")
+                            .append(encodeVector(distanceTable[nodeId]));
                 }
+
                 String ripRspPDU = ripRspPDUBuilder.toString();
 
                 // Send response to manager and keep Idle state
-                unicastProtocol.UPDataReq((short)0, ripRspPDU);
+                unicastProtocol.UPDataReq((short) 0, ripRspPDU);
             }
             // <RIPGET><\s><UCSAPId><\s><neighborUCSAPId>
             case "RIPGET" -> {
@@ -440,7 +600,7 @@ public class RoutingInformationProtocol implements UnicastServiceUserInterface, 
                 String ripNtfPDU = "RIPNTF " + UCSAPId + " " + neighborUCSAPId + " " + cost;
 
                 // Send notification to manager
-                unicastProtocol.UPDataReq((short)0, ripNtfPDU);
+                unicastProtocol.UPDataReq((short) 0, ripNtfPDU);
             }
             // <RIPSET><\s><UCSAPId><\s><neighborUCSAPId><\s><cost>
             case "RIPSET" -> {
@@ -471,25 +631,31 @@ public class RoutingInformationProtocol implements UnicastServiceUserInterface, 
                     return;
                 }
 
-                // Update distance table
-                distanceTable[UCSAPId][neighborUCSAPId] = cost;
+                // Update physical link cost
+                linkCostTable[UCSAPId][neighborUCSAPId] = cost;
+                linkCostTable[neighborUCSAPId][UCSAPId] = cost;
+
+                if (UCSAPId == selfId) {
+                    distanceTable[selfId][neighborUCSAPId] = cost;
+                } else if (neighborUCSAPId == selfId) {
+                    distanceTable[selfId][UCSAPId] = cost;
+                }
 
                 // Build notification PDU
                 String ripNtfPDU = "RIPNTF " + UCSAPId + " " + neighborUCSAPId + " " + cost;
 
                 // Send notification to manager
-                unicastProtocol.UPDataReq((short)0, ripNtfPDU);
+                unicastProtocol.UPDataReq((short) 0, ripNtfPDU);
 
                 // Update state and check if table changed
-                distanceTable[UCSAPId][neighborUCSAPId] = cost;
                 currentState = PossibleState.DISTANCE_VECTOR_UPDATE;
-                checkIfDistanceTableChanged(neighborUCSAPId, distanceTable[neighborUCSAPId]);
+                checkIfDistanceTableChanged(neighborUCSAPId, null);
             }
             // <RIPIND><\s><UCSAPId><\s><distanceTable entries...>
             // Entries <custo_no1><:><custo_no2><:><custo_no3>...<custo_noN>
             case "RIPIND" -> {
                 // Check if we got UCSAPId
-                if (pduDataParts.length < 2) {
+                if (pduDataParts.length < 3) {
                     return;
                 }
 
@@ -501,18 +667,8 @@ public class RoutingInformationProtocol implements UnicastServiceUserInterface, 
                     return;
                 }
 
-                // Get all values from entries as an array
-                int[] entries = new int[16];
-                for (int i = 0; i < 16; i++) {
-                    if (2 + i >= pduDataParts.length) {
-                        return;
-                    }
-                    try {
-                        entries[i] = Integer.parseInt(pduDataParts[2 + i]);
-                    } catch (NumberFormatException error) {
-                        return;
-                    }
-                }
+                // Decode neighbor's distance vector (colon-separated)
+                int[] entries = decodeVector(pduDataParts[2]);
 
                 // Update state and check if table changed
                 currentState = PossibleState.DISTANCE_VECTOR_UPDATE;
@@ -524,15 +680,40 @@ public class RoutingInformationProtocol implements UnicastServiceUserInterface, 
         }
     }
 
+    /**
+     * Checks if the given UCSAP id is a valid node (0..15).
+     *
+     * @param UCSAPId The UCSAP id to check
+     *
+     * @return true if valid, false otherwise
+     */
     private boolean isValidNode(short UCSAPId) {
         return UCSAPId >= 0 && UCSAPId <= 15;
     }
 
+    /**
+     * Checks if there is a connection between two nodes.
+     *
+     * @param UCSAPId The UCSAP id of the first node
+     * @param neighborUCSAPId The UCSAP id of the second node
+     *
+     * @return true if there is a connection, false otherwise
+     */
     private boolean hasConnection(short UCSAPId, short neighborUCSAPId) {
-        int cost = distanceTable[UCSAPId][neighborUCSAPId];
-        return cost != INF && UCSAPId != neighborUCSAPId;
+        int costAB = linkCostTable[UCSAPId][neighborUCSAPId];
+        int costBA = linkCostTable[neighborUCSAPId][UCSAPId];
+
+        boolean hasPath = (costAB != INF) || (costBA != INF);
+        return hasPath && UCSAPId != neighborUCSAPId;
     }
 
+    /**
+     * Checks if the distance table has changed based on a neighbor's distance
+     * vector update.
+     *
+     * @param neighborId The UCSAP id of the neighbor
+     * @param neighborDistanceVector The distance vector received from the neighbor
+     */
     private void checkIfDistanceTableChanged(short neighborId, int[] neighborDistanceVector) {
         boolean tableChanged = false;
 
@@ -570,7 +751,7 @@ public class RoutingInformationProtocol implements UnicastServiceUserInterface, 
                     continue;
                 }
 
-                int costToNeighbor = distanceTable[selfId][neighborNodeId];      // c(x, v)
+                int costToNeighbor = linkCostTable[selfId][neighborNodeId];      // c(x, v)
                 int neighborCostToDestination = distanceTable[neighborNodeId][destinationNodeId]; // Dv(Y)
 
                 if (costToNeighbor == INF || neighborCostToDestination == INF) {
@@ -599,31 +780,66 @@ public class RoutingInformationProtocol implements UnicastServiceUserInterface, 
         currentState = PossibleState.IDLE;
     }
 
-    private void propagateDistanceVector() {
-        // RIPIND <selfId> <d0> <d1> ... <d15>
-        StringBuilder ripIndPDUBuilder = new StringBuilder("RIPIND ").append(selfId);
-
-        int[] selfDistanceVector = distanceTable[selfId];
-        for (int destinationNodeId = 0; destinationNodeId < selfDistanceVector.length; destinationNodeId++) {
-            ripIndPDUBuilder.append(" ").append(selfDistanceVector[destinationNodeId]);
+    /**
+     * Encodes a distance vector as a colon-separated string.
+     *
+     * @param vec The distance vector to encode
+     *
+     * @return The encoded string
+     */
+    private String encodeVector(int[] vec) {
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < vec.length; i++) {
+            if (i > 0) {
+                sb.append(':');
+            }
+            sb.append(vec[i]);
         }
+        return sb.toString();
+    }
 
-        String ripIndPDU = ripIndPDUBuilder.toString();
+    /**
+     * Decodes a colon-separated string into a distance vector.
+     *
+     * @param encoded The encoded string
+     *
+     * @return The decoded distance vector
+     */
+    private int[] decodeVector(String encoded) {
+        int[] vec = new int[MAX_NODES];
+        String[] parts = encoded.split(":");
+        for (int i = 0; i < MAX_NODES; i++) {
+            if (i < parts.length) {
+                try {
+                    vec[i] = Integer.parseInt(parts[i]);
+                } catch (NumberFormatException e) {
+                    vec[i] = INF;
+                }
+            } else {
+                vec[i] = INF;
+            }
+        }
+        return vec;
+    }
 
-        // Send only to neighbors with finite cost, as the spec says not to notify
-        // neighbors whose link has been set to infinity (-1). :contentReference[oaicite:3]{index=3}
-        for (short neighborNodeId = 1; neighborNodeId < 16; neighborNodeId++) {
+    /**
+     * Propagates this node's distance vector to all connected neighbors.
+     */
+    private void propagateDistanceVector() {
+        String pdu = "RIPIND " + selfId + " " + encodeVector(distanceTable[selfId]);
+
+        for (short neighborNodeId = 1; neighborNodeId < MAX_NODES; neighborNodeId++) {
             if (neighborNodeId == selfId) {
                 continue;
             }
             if (!hasConnection(selfId, neighborNodeId)) {
                 continue;
             }
-            if (distanceTable[selfId][neighborNodeId] == INF) {
+            if (linkCostTable[selfId][neighborNodeId] == INF) {
                 continue;
             }
 
-            unicastProtocol.UPDataReq(neighborNodeId, ripIndPDU);
+            unicastProtocol.UPDataReq(neighborNodeId, pdu);
         }
     }
 }

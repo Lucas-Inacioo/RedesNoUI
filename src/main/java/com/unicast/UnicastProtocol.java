@@ -92,6 +92,9 @@ public class UnicastProtocol implements UnicastServiceInterface {
         }
 
         byte[] pdu = buildPdu(data);
+
+        System.out.println("[UnicastProtocol] Sending PDU to " + destUCSAPId + " at " + dest);
+
         DatagramPacket packet = new DatagramPacket(pdu, pdu.length, dest.getAddress(), dest.getPort());
         try {
             this.socket.send(packet);
@@ -276,6 +279,7 @@ public class UnicastProtocol implements UnicastServiceInterface {
 
         return null;
     }
+
     /**
      * Read and parse configuration lines from BufferedReader
      * 

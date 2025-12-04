@@ -2,17 +2,13 @@ package com.app;
 
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
-import java.util.Arrays;
-import java.util.Map;
-import java.util.stream.Collectors;
 
-import com.app.i18n.I18n;
 import com.routingInformationProtocol.RoutingInformationProtocol;
 import com.routingManagement.RoutingProtocolManagementServiceUserInterface;
 import com.unicast.UnicastProtocol;
 
 /**
- * Routing / Unicast demo application with simple command-line interface.
+ * Routing / Unicast demo application with a simple command-line interface.
  *
  * For selfId == 0 this acts as the RoutingManagementApplication (manager).
  * For selfId != 0 this acts as a plain node; it only answers requests.
@@ -24,12 +20,6 @@ public class UnicastDemoApp {
      * indications received from the RoutingInformationProtocol.
      */
     private static class RoutingManagementShell implements RoutingProtocolManagementServiceUserInterface {
-
-        private final I18n i18n;
-
-        RoutingManagementShell(I18n i18n) {
-            this.i18n = i18n;
-        }
 
         @Override
         public synchronized void linkCostIndication(short nodeA, short nodeB, int cost) {
@@ -43,20 +33,20 @@ public class UnicastDemoApp {
             System.out.println();
             System.out.println("[RIP] distanceTableIndication from node " + nodeId + ":");
 
-            int n = distanceTable.length;
+            int nodeCount = distanceTable.length;
 
             // header
             System.out.print("     ");
-            for (int j = 0; j < n; j++) {
-                System.out.printf("%4d", j);
+            for (int columnIndex = 0; columnIndex < nodeCount; columnIndex++) {
+                System.out.printf("%4d", columnIndex);
             }
             System.out.println();
 
             // rows
-            for (int i = 0; i < n; i++) {
-                System.out.printf("%4d:", i);
-                for (int j = 0; j < n; j++) {
-                    System.out.printf("%4d", distanceTable[i][j]);
+            for (int rowIndex = 0; rowIndex < nodeCount; rowIndex++) {
+                System.out.printf("%4d:", rowIndex);
+                for (int columnIndex = 0; columnIndex < nodeCount; columnIndex++) {
+                    System.out.printf("%4d", distanceTable[rowIndex][columnIndex]);
                 }
                 System.out.println();
             }
@@ -72,13 +62,18 @@ public class UnicastDemoApp {
     /**
      * Prints the help text for available commands.
      */
-    private static void printHelp(I18n i18n) {
-        System.out.println(i18n.get("helpText"));
+    private static void printHelp() {
+        System.out.println("Commands:");
+        System.out.println("  help                              - Show this help");
+        System.out.println("  whoami                            - Show this node id");
+        System.out.println("  peers                             - Show a simple peers hint");
+        System.out.println("  quit / exit                       - Exit the application");
         System.out.println();
         System.out.println("RIP commands (only when self id == 0, the manager):");
-        System.out.println("  getcost <node> <neighbor>          - Request link cost");
-        System.out.println("  setcost <node> <neighbor> <cost>   - Set link cost");
-        System.out.println("  gettable <node>                    - Request full distance table");
+        System.out.println("  getcost <node> <neighbor>         - Request link cost");
+        System.out.println("  setcost <node> <neighbor> <cost>  - Set link cost");
+        System.out.println("  gettable <node>                   - Request full distance table");
+        System.out.println();
         System.out.println("Raw send (for debugging, any id):");
         System.out.println("  send <destId> <message>");
     }
@@ -86,81 +81,68 @@ public class UnicastDemoApp {
     /**
      * Main entry point.
      *
-     * --self <id>       : Self UCSAP id (mandatory)
-     * --config <path>   : Path to the unicast protocol config file (default: /nodes.conf)
-     * --network <path>  : Path to the network config file (default: /network.conf)
-     * --lang <code>     : Language code, "en" or "pt" (default: "en")
+     * Usage:
+     *   java com.app.UnicastDemoApp <selfId>
      */
     public static void main(String[] args) throws Exception {
-        // Parse command-line arguments
-        Map<String, String> argumentsMap = parseCommandLineArguments(args);
-
-        // Get values or defaults
-        String selfIdString  = argumentsMap.getOrDefault("--self", null);
-        String nodesConfig   = argumentsMap.getOrDefault("--config", "classpath:/nodes.conf");
-        String networkConfig = argumentsMap.getOrDefault("--network", "classpath:/network.conf");
-        String languageCode  = argumentsMap.getOrDefault("--lang", "en");
-
-        // Language code must be "en" or "pt"
-        final I18n i18n = I18n.forLanguageCode(languageCode);
-
-        // Self id is mandatory
-        if (selfIdString == null) {
-            System.err.println(i18n.get("usage"));
-            System.err.println(i18n.get("usageExample"));
+        // Self id is mandatory and is the first argument
+        if (args.length < 1) {
+            System.err.println("Usage: java com.app.UnicastDemoApp <selfId>");
             System.exit(2);
         }
 
         // Parse self id
         final short selfId;
         try {
-            selfId = Short.parseShort(selfIdString);
+            selfId = Short.parseShort(args[0]);
         } catch (NumberFormatException e) {
-            System.err.println(i18n.get("selfIdInvalid"));
+            System.err.println("Invalid self id: " + args[0]);
             System.exit(2);
             return;
         }
 
+        // Simple default config paths
+        final String nodesConfig   = "classpath:/nodes.conf";
+        final String networkConfig = "classpath:/network.conf";
+
         // Create RoutingInformationProtocol and UnicastProtocol, binding them together
-        final RoutingInformationProtocol rip;
+        final RoutingInformationProtocol routingProtocol;
         final UnicastProtocol unicastProtocol;
         final RoutingManagementShell routingManagementShell; // only used when selfId == 0
 
         try {
-            rip = new RoutingInformationProtocol(selfId);
-            unicastProtocol = new UnicastProtocol(nodesConfig, selfId, rip);
-            rip.bind(unicastProtocol);
+            routingProtocol = new RoutingInformationProtocol(networkConfig, selfId);
+            unicastProtocol = new UnicastProtocol(nodesConfig, selfId, routingProtocol);
+            routingProtocol.bind(unicastProtocol);
 
             // If this is the manager (selfId == 0), bind a management application
             if (selfId == 0) {
-                routingManagementShell = new RoutingManagementShell(i18n);
-                // precisa existir em RoutingInformationProtocol:
-                // public void bind(RoutingProtocolManagementServiceUserInterface app) { ... }
-                rip.bind(routingManagementShell);
+                routingManagementShell = new RoutingManagementShell();
+                routingProtocol.bind(routingManagementShell);
             } else {
                 routingManagementShell = null;
             }
         } catch (RuntimeException error) {
-            System.err.println(i18n.get("failedToStartPrefix") + error.getMessage());
+            System.err.println("Failed to start: " + error.getMessage());
             System.exit(1);
             return;
         }
 
         // Add shutdown hook to close the protocol on exit
-        final I18n finalI18n = i18n;
         Runtime.getRuntime().addShutdownHook(new Thread(() -> {
             try {
-                System.out.println(finalI18n.get("shuttingDown"));
+                System.out.println("Shutting down...");
                 unicastProtocol.close();
-            } catch (Exception ignored) {}
+            } catch (Exception ignored) {
+            }
         }));
 
         // Print welcome message and commands help
         System.out.println(
-            i18n.get("startedPrefix") + selfId +
+            "UnicastDemoApp started. selfId=" + selfId +
             ", config=\"" + nodesConfig + "\", network=\"" + networkConfig + "\""
         );
-        printHelp(i18n);
+        printHelp();
 
         // Start command loop
         BufferedReader bufferedReader = new BufferedReader(new InputStreamReader(System.in));
@@ -179,31 +161,31 @@ public class UnicastDemoApp {
                 break;
 
             } else if (lower.equals("help")) {
-                printHelp(i18n);
+                printHelp();
 
             } else if (lower.equals("whoami")) {
-                System.out.println(i18n.get("whoAmIPrefix") + selfId);
+                System.out.println("I am node " + selfId + ".");
 
             } else if (lower.equals("peers")) {
-                System.out.println(i18n.get("peersHint"));
+                System.out.println("Peers depend on your network.conf topology.");
 
             } else if (lower.startsWith("send ")) {
                 // raw send: send <dest> <message>
                 String rest = line.substring(5).trim();
-                int sp = rest.indexOf(' ');
-                if (sp <= 0) {
-                    System.out.println(i18n.get("sendUsage"));
+                int spaceIndex = rest.indexOf(' ');
+                if (spaceIndex <= 0) {
+                    System.out.println("Usage: send <destId> <message>");
                 } else {
-                    String idStr = rest.substring(0, sp).trim();
-                    String msg   = rest.substring(sp + 1);
+                    String destinationIdString = rest.substring(0, spaceIndex).trim();
+                    String message             = rest.substring(spaceIndex + 1);
                     try {
-                        short dest = Short.parseShort(idStr);
-                        rip.send(dest, msg);
-                        System.out.println(i18n.get("sendConfirmPrefix") + dest + ": " + msg);
-                    } catch (NumberFormatException nfe) {
-                        System.out.println(i18n.get("destInvalidPrefix") + idStr);
-                    } catch (RuntimeException rte) {
-                        System.out.println(i18n.get("sendFailedPrefix") + rte.getMessage());
+                        short destinationId = Short.parseShort(destinationIdString);
+                        routingProtocol.send(destinationId, message);
+                        System.out.println("Sent to " + destinationId + ": " + message);
+                    } catch (NumberFormatException numberFormatException) {
+                        System.out.println("Invalid destination id: " + destinationIdString);
+                    } catch (RuntimeException runtimeException) {
+                        System.out.println("Send failed: " + runtimeException.getMessage());
                     }
                 }
 
@@ -220,8 +202,8 @@ public class UnicastDemoApp {
                         try {
                             short node     = Short.parseShort(parts[0]);
                             short neighbor = Short.parseShort(parts[1]);
-                            boolean ok = rip.getLinkCost(node, neighbor);
-                            if (!ok) {
+                            boolean requestAccepted = routingProtocol.getLinkCost(node, neighbor);
+                            if (!requestAccepted) {
                                 System.out.println("Request rejected: invalid nodes or no link.");
                             } else {
                                 System.out.println("Request sent; wait for linkCostIndication.");
@@ -246,8 +228,8 @@ public class UnicastDemoApp {
                             short node     = Short.parseShort(parts[0]);
                             short neighbor = Short.parseShort(parts[1]);
                             int cost       = Integer.parseInt(parts[2]);
-                            boolean ok = rip.setLinkCost(node, neighbor, cost);
-                            if (!ok) {
+                            boolean requestAccepted = routingProtocol.setLinkCost(node, neighbor, cost);
+                            if (!requestAccepted) {
                                 System.out.println("Request rejected: invalid nodes/link or cost.");
                             } else {
                                 System.out.println("Request sent; wait for linkCostIndication.");
@@ -269,8 +251,8 @@ public class UnicastDemoApp {
                     } else {
                         try {
                             short node = Short.parseShort(rest);
-                            boolean ok = rip.getDistanceTable(node);
-                            if (!ok) {
+                            boolean requestAccepted = routingProtocol.getDistanceTable(node);
+                            if (!requestAccepted) {
                                 System.out.println("Request rejected: invalid node id.");
                             } else {
                                 System.out.println("Request sent; wait for distanceTableIndication.");
@@ -282,9 +264,9 @@ public class UnicastDemoApp {
                 }
 
             } else {
-                System.out.println(i18n.get("unknownCommand"));
+                System.out.println("Unknown command: " + line);
                 System.out.println();
-                printHelp(i18n);
+                printHelp();
             }
 
             // Prepare for next command
@@ -293,39 +275,6 @@ public class UnicastDemoApp {
 
         // Close protocol and exit
         unicastProtocol.close();
-        System.out.println(i18n.get("goodbye"));
-    }
-
-    /**
-     * Parses command-line arguments into a Map.
-     *
-     * @param arguments Command-line arguments
-     *
-     * @return Map of argument keys to values
-     */
-    private static Map<String, String> parseCommandLineArguments(String[] arguments) {
-        // Simple parser for arguments in the form --key value or --flag
-        Map<String, String> parsedArguments = Arrays.stream(arguments)
-            .collect(Collectors.toMap(
-                argument -> argument,
-                argument -> "",
-                (existingValue, newValue) -> existingValue
-            ));
-
-        // Iterate through arguments to fill the map correctly
-        for (int index = 0; index < arguments.length; index++) {
-            String currentArgument = arguments[index];
-            if (currentArgument.startsWith("--")) {
-                if (index + 1 < arguments.length && !arguments[index + 1].startsWith("--")) {
-                    // it's a key-value pair
-                    parsedArguments.put(currentArgument, arguments[index + 1]);
-                    index++;
-                } else {
-                    // it's a boolean flag
-                    parsedArguments.put(currentArgument, "true");
-                }
-            }
-        }
-        return parsedArguments;
+        System.out.println("Goodbye.");
     }
 }
